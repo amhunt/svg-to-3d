@@ -38,7 +38,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "node --import ./test/setup.js --test test/*.test.ts",
+    "test": "npm run build && node --import ./test/setup.js --test test/*.test.js",
     "prepack": "npm run build"
   },
   "dependencies": {
