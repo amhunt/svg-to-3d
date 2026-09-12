@@ -1,0 +1,60 @@
+{
+  "name": "svg-to-3d",
+  "version": "0.1.0",
+  "description": "Turn an SVG into watertight, multi-color 3D-printable solids. Manifold-correct 3MF out, no repair round-trip.",
+  "keywords": [
+    "svg",
+    "3mf",
+    "3d-printing",
+    "extrude",
+    "manifold",
+    "watertight",
+    "mesh",
+    "three",
+    "multi-color"
+  ],
+  "license": "MIT",
+  "author": "Andrew Hunt <andrew@hunt.codes> (https://hunt.codes)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amhunt/svg-to-3d.git"
+  },
+  "homepage": "https://github.com/amhunt/svg-to-3d#readme",
+  "bugs": "https://github.com/amhunt/svg-to-3d/issues",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import ./test/setup.js --test test/*.test.ts",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "earcut": "^3.0.2",
+    "jszip": "^3.10.1",
+    "polygon-clipping": "^0.15.7"
+  },
+  "peerDependencies": {
+    "three": ">=0.185.0"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.0.0",
+    "@types/earcut": "^3.0.0",
+    "@types/node": "^24.0.0",
+    "@types/three": "^0.185.0",
+    "three": "^0.185.1",
+    "typescript": "^5.9.3"
+  }
+}
