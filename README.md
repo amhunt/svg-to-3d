@@ -30,7 +30,10 @@ const analysis = analyzeSvg(svgText); // { colors, shapesByColor }
 
 // Per color: depth in mm, optional chamfers.
 const options = new Map(
-  analysis.colors.map((c) => [c, { ...DEFAULT_PART_OPTIONS, extrudeDepth: 2.4 }]),
+  analysis.colors.map((c) => [
+    c,
+    { ...DEFAULT_PART_OPTIONS, extrudeDepth: 2.4 },
+  ]),
 );
 
 // 0.5 converts SVG user units to mm.
@@ -48,17 +51,16 @@ print apart and glue up.
 
 ## Why not just extrude it
 
-`SVGLoader` + `ExtrudeGeometry` is the three-line version and it's fine for
-rendering, but the mesh isn't closed — unwelded vertices, same-color shapes left
-overlapping, doubled walls wherever two regions touch. Slicers reject it.
-Inkscape → OpenSCAD and Blender's Solidify do give you real solids, but they're
-manual, single-color, and there's nothing to call from a build.
-[`@jscad/modeling`](https://github.com/jscad/OpenJSCAD.org) and
-[`manifold-3d`](https://github.com/elalish/manifold) are both very good, and both
-are geometry kernels — the color grouping, the repair and the 3MF writing are
-still yours to write.
+| Instead of                                                  | What's left to write                                                                                                                                                        |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SVGLoader` + `ExtrudeGeometry`                             | everything. Fine for rendering, but the mesh isn't closed — unwelded vertices, same-color shapes left overlapping, doubled walls where two regions touch. Slicers reject it |
+| [`@jscad/modeling`](https://github.com/jscad/OpenJSCAD.org) | real CSG in JS, but a general kernel — the color grouping, the repair and the 3MF are yours                                                                                 |
+| [`manifold-3d`](https://github.com/elalish/manifold)        | genuinely guaranteed-manifold CSG, and still a kernel (in WASM) — same three things left over                                                                               |
 
-This is that whole path, and the repair is the point: paths are cleaned before
+Desktop gets there too — Inkscape → OpenSCAD, Blender's Solidify — but manually,
+one color at a time, with nothing to call from a build.
+
+This is the whole path instead, and the repair is the point: paths are cleaned before
 triangulation, each color is boolean-unioned, everything gets welded, coincident
 internal walls dissolve, T-junctions are split, and every solid is eroded by
 ~0.5 µm so shapes meeting at a point come apart into separately closed bodies
