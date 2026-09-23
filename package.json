@@ -1,6 +1,6 @@
 {
   "name": "svg-to-3d",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Turn an SVG into watertight, multi-color 3D-printable solids. Manifold-correct 3MF out, no repair round-trip.",
   "keywords": [
     "svg",
