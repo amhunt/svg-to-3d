@@ -50,7 +50,7 @@
     "three": ">=0.185.0"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.0.0",
+    "@happy-dom/global-registrator": "^21.0.4",
     "@types/earcut": "^3.0.0",
     "@types/node": "^24.0.0",
     "@types/three": "^0.185.0",
