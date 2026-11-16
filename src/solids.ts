@@ -8,6 +8,8 @@ import type { Ring, Polygon, MultiPolygon } from "polygon-clipping";
 export type ColorMesh = {
   /** Canonical `#rrggbb` fill color this part was built from. */
   color: string;
+  /** What to call the part in the slicer's object list, when there's a better name than its color. */
+  name?: string;
   /** xyz triples. Y is up, the art lies in XZ, the base rests at y = 0. */
   vertices: Float32Array;
   triangles: Uint32Array;

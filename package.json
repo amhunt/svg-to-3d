@@ -1,7 +1,7 @@
 {
   "name": "svg-to-3d",
-  "version": "0.2.0",
-  "description": "Turn an SVG into watertight, multi-color 3D-printable solids. Manifold-correct 3MF out, no repair round-trip.",
+  "version": "0.3.0",
+  "description": "Turn an SVG into watertight, multi-color 3D-printable solids, or a word into a stained-glass sign. Manifold-correct 3MF out, no repair round-trip.",
   "keywords": [
     "svg",
     "3mf",
@@ -11,7 +11,8 @@
     "watertight",
     "mesh",
     "three",
-    "multi-color"
+    "multi-color",
+    "stained-glass"
   ],
   "license": "MIT",
   "author": "Andrew Hunt <andrew@hunt.codes> (https://hunt.codes)",
@@ -27,6 +28,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./stained-glass": {
+      "types": "./dist/stainedGlass/index.d.ts",
+      "default": "./dist/stainedGlass/index.js"
+    },
+    "./stained-glass/prompt": {
+      "types": "./dist/stainedGlass/prompt.d.ts",
+      "default": "./dist/stainedGlass/prompt.js"
     }
   },
   "files": [
@@ -38,10 +47,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --import ./test/setup.js --test test/*.test.js",
+    "test": "npm run build && node --import ./test/setup.js --test test/*.test.js && node --test test/stainedGlass.test.js",
     "prepack": "npm run build"
   },
   "dependencies": {
+    "clipper2-ts": "2.0.1-19",
     "earcut": "^3.0.2",
     "jszip": "^3.10.1",
     "polygon-clipping": "^0.15.7"
@@ -54,6 +64,7 @@
     "@types/earcut": "^3.0.0",
     "@types/node": "^24.0.0",
     "@types/three": "^0.185.0",
+    "opentype.js": "^2.0.0",
     "three": "^0.185.1",
     "typescript": "^5.9.3"
   }
