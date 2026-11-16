@@ -51,7 +51,9 @@ function colorAttr(color: string): string {
 
 /** Part names as the slicer's object list shows them. */
 function partName(mesh: ColorMesh, index: number): string {
-  return `${index + 1} ${mesh.color}`;
+  return mesh.name
+    ? `${mesh.name} ${mesh.color}`
+    : `${index + 1} ${mesh.color}`;
 }
 
 /**
