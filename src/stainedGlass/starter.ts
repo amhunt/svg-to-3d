@@ -34,42 +34,48 @@ export function starterStainedGlass(
   const letterColor = glass[0];
   const bandColor = glass[1 % glass.length];
   const backgroundColor = glass[2 % glass.length];
-  const accents = glass.length > 3 ? glass.slice(3) : [bandColor];
+  // With a word on the panel the first two colors have a home in the
+  // letters and the band, and the background takes the rest. With no word
+  // the background is all there is, so it has to find room for every one.
+  const spare = glass.filter((color) => color !== backgroundColor);
+  const wedges = layout.band ? glass.slice(3) : spare;
+  const corners = layout.band
+    ? [glass.length > 3 ? glass[3] : bandColor]
+    : spare;
   const cut = (d: string) => `<path fill="none" stroke="#000" d="${d}"/>`;
 
   // Background: one color, a few accent areas, then sweeping cuts.
   const background: string[] = [
     `<rect x="0" y="0" width="${n1(W)}" height="${n1(H)}" fill="${backgroundColor}"/>`,
   ];
-  if (glass.length > 3) {
-    // A wide wedge of each extra color, fanned from alternating edges
-    accents.forEach((color, i) => {
-      const x = between(0.1, 0.8) * W;
-      const span = between(0.18, 0.32) * W;
-      const lean = between(-0.15, 0.15) * W;
-      const fromTop = i % 2 === 0;
-      const y0 = fromTop ? 0 : H;
-      const y1 = fromTop ? H : 0;
-      background.push(
-        `<path fill="${color}" d="M${n1(x)} ${n1(y0)} L${n1(x + span)} ${n1(y0)} L${n1(x + span / 2 + lean)} ${n1(y1)} Z"/>`,
-      );
-    });
-  }
+  // A wide wedge of each extra color, fanned from alternating edges, each
+  // in a stretch of the width to itself so none can paint another out
+  wedges.forEach((color, i) => {
+    const slot = W / wedges.length;
+    const span = slot * between(0.55, 0.85);
+    const x = slot * i + (slot - span) * between(0.2, 0.8);
+    const lean = slot * between(-0.2, 0.2);
+    const fromTop = i % 2 === 0;
+    const y0 = fromTop ? 0 : H;
+    const y1 = fromTop ? H : 0;
+    background.push(
+      `<path fill="${color}" d="M${n1(x)} ${n1(y0)} L${n1(x + span)} ${n1(y0)} L${n1(x + span / 2 + lean)} ${n1(y1)} Z"/>`,
+    );
+  });
   const corner = Math.min(W, H) * 0.42;
-  const accent = glass.length > 3 ? accents[0] : bandColor;
-  if (glass.length > 1) {
-    for (const [cx, cy, sx, sy] of [
+  if (corners.length > 0 && glass.length > 1) {
+    [
       [0, 0, 1, 1],
       [W, 0, -1, 1],
       [W, H, -1, -1],
       [0, H, 1, -1],
-    ]) {
+    ].forEach(([cx, cy, sx, sy], i) => {
       const a = corner * between(0.55, 1);
       const c = corner * between(0.55, 1);
       background.push(
-        `<path fill="${accent}" d="M${n1(cx)} ${n1(cy)} L${n1(cx + sx * a)} ${n1(cy)} L${n1(cx)} ${n1(cy + sy * c)} Z"/>`,
+        `<path fill="${corners[i % corners.length]}" d="M${n1(cx)} ${n1(cy)} L${n1(cx + sx * a)} ${n1(cy)} L${n1(cx)} ${n1(cy + sy * c)} Z"/>`,
       );
-    }
+    });
   }
   const total = Math.max(2, layout.targets.cuts);
   const across = Math.max(1, Math.round(total * 0.45));

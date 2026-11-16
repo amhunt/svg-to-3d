@@ -36,6 +36,11 @@ export type ParsedDesign = {
 const MAX_LENGTH = 400_000;
 const MAX_SHAPES = 1500;
 const MAX_POINTS = 4000;
+/**
+ * Points in a whole design. A busy one — a hundred and fifty shapes, most
+ * of them curved — comes to about thirty thousand.
+ */
+const MAX_DESIGN_POINTS = 40_000;
 /** Curve tolerance in design units (millimetres, when the brief is followed). */
 const TOLERANCE = 0.02;
 
@@ -105,7 +110,11 @@ const numbersOf = (text: string): number[] =>
 type Subpath = { points: Vec2[]; closed: boolean };
 
 /** SVG path data → polylines. Every command of the full grammar. */
-export function readPathData(d: string): Subpath[] {
+export function readPathData(
+  d: string,
+  /** Points left for the whole design; this path spends from it */
+  pool: { left: number } = { left: MAX_POINTS * 2 },
+): Subpath[] {
   const out: Subpath[] = [];
   const tokens =
     d.match(/[a-z]|[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi) ?? [];
@@ -116,20 +125,16 @@ export function readPathData(d: string): Subpath[] {
   let control: Vec2 | null = null; // last control point, for S and T
   let previous = "";
   let current: Subpath | null = null;
-  let budget = MAX_POINTS * 4;
+  let budget = Math.min(MAX_POINTS * 2, pool.left);
 
   const isNumber = (t: string | undefined) =>
     t !== undefined && !/^[a-z]$/i.test(t);
   const next = (): number => Number(tokens[i++]);
   const flag = (): boolean => {
-    // Arc flags may be written run together: "a5 5 0 01 10 10"
+    // A flag is one character, and minifiers run it into what follows:
+    // "a5 5 0 01 10 10", or "a5 5 0 011.5 1" for flags 0 and 1, then 1.5
     const t = tokens[i];
-    if (
-      t !== undefined &&
-      /^[01]{2,}/.test(t) &&
-      t.length > 1 &&
-      !t.includes(".")
-    ) {
+    if (t !== undefined && t.length > 1 && /^[01]/.test(t)) {
       tokens[i] = t.slice(1);
       return t[0] === "1";
     }
@@ -142,6 +147,7 @@ export function readPathData(d: string): Subpath[] {
     }
     for (const p of points) {
       if (budget-- <= 0) return;
+      pool.left--;
       if (Number.isFinite(p.x) && Number.isFinite(p.y)) current.points.push(p);
     }
   };
@@ -286,11 +292,32 @@ const ellipse = (cx: number, cy: number, rx: number, ry: number): Vec2[] => {
   return points;
 };
 
+/**
+ * `text` without its `open … close` spans. Done by hand because the regex
+ * for it goes quadratic on a run of opens with no close; an open that
+ * never closes takes the rest of the text with it, as it does in a browser.
+ */
+const strip = (text: string, open: string, close: string): string => {
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const from = text.indexOf(open, at);
+    if (from < 0) return out + text.slice(at);
+    out += text.slice(at, from);
+    const to = text.indexOf(close, from + open.length);
+    if (to < 0) return out;
+    at = to + close.length;
+  }
+};
+
 type Attributes = Record<string, string>;
 
 const readAttributes = (text: string): Attributes => {
   const attributes: Attributes = {};
-  const pattern = /([a-zA-Z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  // A name starts where a name isn't already under way. Without that, one
+  // long word with no "=" after it is tried again from every letter of it.
+  const pattern =
+    /(?<![\w:.-])([a-zA-Z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
   for (let m = pattern.exec(text); m; m = pattern.exec(text)) {
     attributes[m[1].toLowerCase()] = m[2] ?? m[3] ?? "";
   }
@@ -349,9 +376,7 @@ export function parseDesign(svgText: string): ParsedDesign {
     text = text.slice(0, MAX_LENGTH);
     ignored.truncated = true;
   }
-  text = text
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+  text = strip(strip(text, "<!--", "-->"), "<![CDATA[", "]]>");
   if (!/<svg[\s>]/i.test(text))
     throw new Error("That isn't an SVG: there's no <svg> element in it");
 
@@ -366,7 +391,11 @@ export function parseDesign(svgText: string): ParsedDesign {
   };
   const stack: Frame[] = [{ region: null, skip: false, name: "" }];
 
-  const tag = /<(\/?)([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
+  // `<` is kept out of the attribute run on purpose: with it in, every
+  // unclosed "<g" scans to the end of the text before giving up, and a run
+  // of them takes seconds
+  const tag = /<(\/?)([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^<>"'])*?)(\/?)>/g;
+  const pool = { left: MAX_DESIGN_POINTS };
   for (let m = tag.exec(text); m; m = tag.exec(text)) {
     const closing = m[1] === "/";
     const name = m[2].toLowerCase().replace(/^svg:/, "");
@@ -415,7 +444,7 @@ export function parseDesign(svgText: string): ParsedDesign {
     }
 
     if (top.skip) continue;
-    if (shapes.length >= MAX_SHAPES) {
+    if (shapes.length >= MAX_SHAPES || pool.left <= 0) {
       ignored.truncated = true;
       break;
     }
@@ -425,7 +454,7 @@ export function parseDesign(svgText: string): ParsedDesign {
     let subpaths: Subpath[] = [];
     switch (name) {
       case "path":
-        subpaths = readPathData(attributes.d ?? "");
+        subpaths = readPathData(attributes.d ?? "", pool);
         break;
       case "rect": {
         const x = value("x");
@@ -486,6 +515,13 @@ export function parseDesign(svgText: string): ParsedDesign {
     }
     subpaths = subpaths.filter((s) => s.points.length >= 2);
     if (subpaths.length === 0) continue;
+    // Paths spend from the pool as they're read; the other shapes here
+    if (name !== "path") {
+      for (const s of subpaths) pool.left -= s.points.length;
+    }
+    // Said here and not only when the next shape is turned away: the one
+    // that emptied the pool may be the last, and was itself cut short
+    if (pool.left <= 0) ignored.truncated = true;
 
     const region = top.region ?? "background";
     const fill = readColor(attributes.fill ?? top.fill);

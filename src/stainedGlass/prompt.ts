@@ -246,13 +246,61 @@ export function parseStainedGlassBrief(value: unknown): StainedGlassBrief {
 }
 
 /**
- * The `<svg>…</svg>` in a model's reply, with any code fence or chatter
- * around it dropped. Null when there isn't one, or when it was cut short.
+ * The first whole `<svg>…</svg>` in a model's reply, with any code fence or
+ * chatter around it dropped. Null when there isn't one, or when it was cut
+ * short.
+ *
+ * One pass over the text, a tag at a time, so a reply written to waste a
+ * server's time can't: comments are stepped over, a tag ends at its `>`
+ * outside any quotes, and "the <svg below" in passing is a mention, not a
+ * tag. A reply with a draft and a second attempt gives the draft alone.
  */
 export function extractStainedGlassSvg(reply: string): string | null {
-  const start = reply.search(/<svg[\s>]/i);
-  if (start < 0) return null;
-  const end = reply.toLowerCase().lastIndexOf("</svg>");
-  if (end < start) return null;
-  return reply.slice(start, end + "</svg>".length);
+  const next = /<!--|<(\/?)([a-zA-Z][\w:-]*)/g;
+  /** Where each `<svg` still waiting for its `</svg>` began. */
+  const open: number[] = [];
+  let best: [number, number] | null = null;
+  for (let m = next.exec(reply); m; m = next.exec(reply)) {
+    if (m[0] === "<!--") {
+      const end = reply.indexOf("-->", m.index + 4);
+      if (end < 0) break;
+      next.lastIndex = end + 3;
+      continue;
+    }
+    // To the end of this tag: the first `>` that isn't inside quotes
+    let at = m.index + m[0].length;
+    let quote = "";
+    let end = -1;
+    for (; at < reply.length; at++) {
+      const c = reply[at];
+      if (quote) {
+        if (c === quote) quote = "";
+      } else if (c === '"' || c === "'") quote = c;
+      else if (c === ">") {
+        end = at;
+        break;
+      } else if (c === "<") break;
+    }
+    if (end < 0) {
+      // Ran into another `<` first: this one was prose. Off the end of the
+      // text: nothing after it can be a tag either.
+      if (at >= reply.length) break;
+      next.lastIndex = at;
+      continue;
+    }
+    next.lastIndex = end + 1;
+    if (m[2].toLowerCase() !== "svg") continue;
+    if (!m[1]) {
+      if (reply[end - 1] !== "/") open.push(m.index);
+      continue;
+    }
+    const start = open.pop();
+    if (start === undefined) continue;
+    // Nothing left open: this is the first drawing, whole
+    if (open.length === 0) return reply.slice(start, end + 1);
+    // Something before it never closed ("here is the <svg> you wanted").
+    // Keep the earliest finished one, and let one that encloses it win.
+    if (!best || start < best[0]) best = [start, end + 1];
+  }
+  return best ? reply.slice(best[0], best[1]) : null;
 }

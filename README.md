@@ -109,9 +109,11 @@ glass.warnings; // [{ code, message }] — what had to be fixed, in plain words
 const blob = await exportToThreeMf(glass.meshes, "parts", { name: "hunt" });
 ```
 
-No DOM needed anywhere in that: it runs as it is in Node, a Web Worker or
-an edge function. Import from `svg-to-3d/stained-glass` instead of the
-root and three isn't loaded either. Fonts come in as anything with
+Nothing in that needs a DOM: the library runs as it is in Node, a Web
+Worker or an edge function. (The font is the one line to change for Node,
+where opentype.js loads as CommonJS: `import opentype from "opentype.js"`,
+then `opentype.parse` on a buffer read with `fs`.) Import from
+`svg-to-3d/stained-glass` instead of the root and three isn't loaded either. Fonts come in as anything with
 `unitsPerEm` and `stringToGlyphs` — an opentype.js font fits — so the
 library doesn't ship a font parser you might not want.
 

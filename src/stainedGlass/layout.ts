@@ -317,6 +317,9 @@ export function layoutStainedGlass(
   const minFeature = positive(options.minFeature, 0.8, "minFeature");
   const margin = positive(options.margin, 0.57, "margin");
   const spacing = Math.max(leadWidth, options.letterSpacing ?? leadWidth);
+  if (options.shards != null && !Number.isFinite(options.shards)) {
+    throw new RangeError("shards must be a number from 1 to 10");
+  }
   const shards = Math.min(10, Math.max(1, Math.round(options.shards ?? 6)));
   const palette = paletteFor(options.colors ?? 4, options.palette);
   if (frameWidth < leadWidth / 2) {
@@ -348,6 +351,9 @@ export function layoutStainedGlass(
           slots.push({ gap: true });
         continue;
       }
+      // A soft hyphen, a zero-width joiner: there, but not a letter. A
+      // font may well draw one, and a sign shouldn't.
+      if (/\p{C}/u.test(char)) continue;
       const glyph = font.stringToGlyphs(char)[0];
       const commands =
         glyph && glyph.index !== 0 ? glyph.getPath(0, 0, em).commands : [];

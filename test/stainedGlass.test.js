@@ -190,6 +190,27 @@ test("layout: a glyph the font lacks is left out and reported", () => {
   assert.equal(layout.warnings[0].code, "missing-glyph");
 });
 
+test("layout: what isn't a letter isn't set, and shards has to be a number", () => {
+  // A soft hyphen and a zero-width joiner are in the text but not on the sign
+  const layout = layoutStainedGlass({
+    text: "I\u00adL\u200d",
+    font,
+    width: 200,
+  });
+  assert.equal(layout.letters.map((l) => l.char).join(""), "IL");
+  assert.deepEqual(layout.missing, []);
+  assert.deepEqual(parseStainedGlassBrief(layout.brief), layout.brief);
+
+  assert.throws(
+    () => layoutStainedGlass({ text: "I", font, width: 120, shards: NaN }),
+    /shards/,
+  );
+  assert.equal(
+    layoutStainedGlass({ text: "I", font, width: 120, shards: 99 }).shards,
+    10,
+  );
+});
+
 test("layout: every slot needs a color of its own", () => {
   const withPalette = (palette, colors) => () =>
     layoutStainedGlass({ text: "I", font, width: 120, colors, palette });
@@ -313,6 +334,33 @@ test("build: the starter is printable at every density, with the lead in one par
         label,
       );
       assert.ok(glass.stats.letters >= 3, label);
+    }
+  }
+});
+
+test("build: the starter finds room for every color, word or no word", () => {
+  for (const colors of [2, 3, 4, 5, 6, 8]) {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      for (const text of ["", "ILO"]) {
+        const layout = layoutStainedGlass({
+          text,
+          font,
+          width: 250,
+          height: 100,
+          colors,
+        });
+        const glass = buildStainedGlass(
+          layout,
+          starterStainedGlass(layout, { seed }),
+        );
+        const label = `${colors} colors, seed ${seed}, "${text}"`;
+        assert.ok(
+          !glass.warnings.some((w) => w.code === "unused-color"),
+          label,
+        );
+        assert.equal(glass.meshes.length, colors, label);
+        assertPrintable(glass, label);
+      }
     }
   }
 });
@@ -660,6 +708,72 @@ test("build: a sloppy design still builds", () => {
   assert.throws(() => buildStainedGlass(layout, ""), /SVG/);
 });
 
+test("build: arc flags run into the next number are still two flags", () => {
+  // What a minifier writes for flags 0 and 1 followed by 30.5
+  const spaced = svg(
+    `<g id="background"><rect width="200" height="80" fill="${BLUE}"/><path d="M60 70 a40 40 0 0 1 80.5 0 Z" fill="${RED}"/></g>`,
+  );
+  const packed = svg(
+    `<g id="background"><rect width="200" height="80" fill="${BLUE}"/><path d="M60 70a40 40 0 0180.5 0Z" fill="${RED}"/></g>`,
+  );
+  const area = (design) =>
+    buildStainedGlass(plain(), design)
+      .pieces.filter((p) => p.color === RED)
+      .reduce((sum, p) => sum + p.area, 0);
+  assert.ok(area(spaced) > 500);
+  assert.ok(Math.abs(area(packed) - area(spaced)) < 0.01);
+});
+
+test(
+  "build: a huge or malformed design is cut off, not ground through",
+  { timeout: 20_000 },
+  () => {
+    const layout = plain();
+    // 80 paths of 260 curves each: 1.3 million points if nothing stops it
+    const heavy = svg(
+      `<g id="background">${`<path d="M0 0${" C0 0 250 120 0 0".repeat(260)}" fill="${RED}"/>`.repeat(80)}</g>`,
+    );
+    let started = performance.now();
+    const glass = buildStainedGlass(layout, heavy);
+    assert.ok(
+      performance.now() - started < 3000,
+      "a heavy design builds in seconds",
+    );
+    assert.ok(glass.warnings.some((w) => w.code === "design-truncated"));
+    assertPrintable(glass, "heavy");
+
+    // A design whose last path is the one that runs out says so too
+    const last = svg(
+      `<g id="background"><rect width="200" height="80" fill="${BLUE}"/>${`<path d="M0 0${" C0 0 250 120 0 0".repeat(260)}" fill="${RED}"/>`.repeat(5)}</g>`,
+    );
+    assert.ok(
+      buildStainedGlass(layout, last).warnings.some(
+        (w) => w.code === "design-truncated",
+      ),
+    );
+
+    // Runs of tags and comments that never close used to cost time squared
+    for (const flood of [
+      "<a",
+      "<g ",
+      "<!--",
+      "<![CDATA[",
+      '<a x="',
+      "<path d='",
+      // One enormous attribute name, with no "=" to end it
+      "a",
+    ]) {
+      started = performance.now();
+      const design = `<svg viewBox="0 0 200 80"><g id="background"><rect width="200" height="80" fill="${RED}"/></g>${flood === "a" ? "<g " : ""}${flood.repeat(60_000)}`;
+      assertPrintable(buildStainedGlass(layout, design), flood);
+      assert.ok(
+        performance.now() - started < 2000,
+        `${flood} flood parses quickly`,
+      );
+    }
+  },
+);
+
 test("build: the flat SVG is the panel in millimetres", () => {
   const layout = layoutStainedGlass({ text: "IL", font, width: 180 });
   const glass = buildStainedGlass(layout, starterStainedGlass(layout));
@@ -694,7 +808,8 @@ test("prompt: the brief becomes a message, and only the notes are free text", ()
   assert.match(user, /#/);
   assert.match(stainedGlassPrompt(layout.brief).user, /Theme: abstract shards/);
   // The example in the system prompt is itself a design that builds
-  const example = extractStainedGlassSvg(system);
+  const example = system.slice(system.lastIndexOf("<svg xmlns"));
+  assert.match(example, /<\/svg>$/);
   assert.ok(buildStainedGlass(layout, example).pieces.length > 4);
 });
 
@@ -788,6 +903,76 @@ test("prompt: the svg is lifted out of a chatty reply", () => {
     null,
   );
 });
+
+test("prompt: a reply with a draft and a second go gives the first drawing only", () => {
+  const first = `<svg viewBox="0 0 1 1"><g id="background"><rect fill="#f00"/></g></svg>`;
+  const second = `<svg viewBox="0 0 1 1"><g id="background"><rect fill="#0f0"/></g></svg>`;
+  assert.equal(
+    extractStainedGlassSvg(
+      "Draft:\n```svg\n" +
+        first +
+        "\n```\nBetter:\n```svg\n" +
+        second +
+        "\n```",
+    ),
+    first,
+  );
+  // One drawing inside another is still one drawing
+  const nested = `<svg viewBox="0 0 2 2"><svg x="1"><rect/></svg><rect/></svg>`;
+  assert.equal(extractStainedGlassSvg(`ok ${nested} done`), nested);
+  // Nor is one inside an attribute, a comment, or a sentence
+  const tricky = `<svg viewBox="0 0 1 1"><desc title="<svg>"/><!-- </svg> --><rect/></svg>`;
+  assert.equal(extractStainedGlassSvg(`ok ${tricky} done`), tricky);
+  assert.equal(
+    extractStainedGlassSvg(`The <svg element below:\n${first}`),
+    first,
+  );
+  assert.equal(extractStainedGlassSvg(`</svg> stray ${first}`), first);
+  const shouting = `<SVG viewBox="0 0 1 1"><rect/></SVG>`;
+  assert.equal(extractStainedGlassSvg(shouting), shouting);
+  // A mention of the tag in passing isn't the drawing
+  assert.equal(
+    extractStainedGlassSvg(
+      `Here is the <svg> you asked for:\n${first}\nEnjoy!`,
+    ),
+    first,
+  );
+  assert.equal(
+    extractStainedGlassSvg(`<svg viewBox="0 0 1 1"/> then nothing`),
+    null,
+  );
+  assert.equal(
+    extractStainedGlassSvg(`<svg><svgfoo></svg>`),
+    "<svg><svgfoo></svg>",
+  );
+});
+
+test(
+  "prompt: a reply written to waste time is read in one pass",
+  { timeout: 20_000 },
+  () => {
+    const drawing = `<svg viewBox="0 0 1 1"><rect/></svg>`;
+    for (const flood of [
+      "<svg ",
+      "<svg>",
+      "<svg x='",
+      "<!--",
+      "</svg>",
+      "<svg/>",
+      "<a ",
+    ]) {
+      const started = performance.now();
+      extractStainedGlassSvg(flood.repeat(40_000) + drawing);
+      const took = Math.round(performance.now() - started);
+      assert.ok(took < 1000, `${JSON.stringify(flood)} flood took ${took} ms`);
+    }
+    // A run of mentions in front doesn't hide the drawing after it
+    assert.equal(
+      extractStainedGlassSvg("<svg ".repeat(1000) + drawing),
+      drawing,
+    );
+  },
+);
 
 test("prompt: the module a server imports stands alone", () => {
   const source = readFileSync(
