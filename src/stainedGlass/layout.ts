@@ -340,11 +340,10 @@ export function layoutStainedGlass(
       }
     | { gap: true };
   const slots: Slot[] = [];
-  let em = 1000;
   if (chars.length > 0) {
     const font = options.font;
     if (!font) throw new RangeError("a font is required to set text");
-    em = font.unitsPerEm || 1000;
+    const em = font.unitsPerEm || 1000;
     for (const char of chars) {
       if (/\s/.test(char)) {
         if (slots.length > 0 && !("gap" in slots[slots.length - 1]))
@@ -389,12 +388,11 @@ export function layoutStainedGlass(
     const bandUnits = bottom - top;
     const gapUnits = 0.35 * bandUnits;
     let inkUnits = 0;
-    let gaps = 0;
     for (const slot of slots) {
       if ("gap" in slot) inkUnits += gapUnits;
       else inkUnits += slot.box[2] - slot.box[0];
     }
-    gaps = slots.length - 1;
+    const gaps = slots.length - 1;
     // width = 2·frame + 2·margin·band + ink + gaps·spacing, all but the
     // spacing and the frame scaling with the letters
     const scale =

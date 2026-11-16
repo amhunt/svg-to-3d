@@ -10,7 +10,6 @@ import {
   type Vec2,
 } from "../solids.js";
 import {
-  areaOf,
   boundsOf,
   grow,
   overlap,

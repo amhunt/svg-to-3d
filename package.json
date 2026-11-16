@@ -47,6 +47,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "npm run build && node --import ./test/setup.js --test test/*.test.js && node --test test/stainedGlass.test.js",
     "prepack": "npm run build"
   },
@@ -60,12 +63,17 @@
     "three": ">=0.185.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@happy-dom/global-registrator": "^20.0.0",
     "@types/earcut": "^3.0.0",
     "@types/node": "^24.0.0",
     "@types/three": "^0.185.0",
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
     "opentype.js": "^2.0.0",
+    "prettier": "^3.10.1",
     "three": "^0.185.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.2"
   }
 }

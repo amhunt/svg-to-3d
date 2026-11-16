@@ -181,7 +181,10 @@ export function parseStainedGlassBrief(value: unknown): StainedGlassBrief {
   }
   const letters = v.letters.map((raw, i) => {
     const letter = (raw ?? {}) as Record<string, unknown>;
-    const chars = Array.from(String(letter.char ?? ""));
+    const char = letter.char;
+    const chars = Array.from(
+      typeof char === "string" || typeof char === "number" ? String(char) : "",
+    );
     // Any one visible character: a sign may say R&D or ANDY'S, and a lone
     // character can't carry an instruction whatever it is. What's refused
     // is what can't be seen — whitespace, control characters, and the
