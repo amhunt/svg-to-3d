@@ -73,8 +73,8 @@ export type StainedGlassLayoutOptions = {
   /** Total colors, lead included. Default 4. */
   colors?: number;
   /**
-   * `#rrggbb` colors, lead first. Shorter than `colors`, it's topped up
-   * from `DEFAULT_STAINED_GLASS_PALETTE`.
+   * `#rrggbb` colors, lead first, each one different. Shorter than
+   * `colors`, it's topped up from `DEFAULT_STAINED_GLASS_PALETTE`.
    */
   palette?: readonly string[];
   /** Glass between the word and the frame, as a multiple of the letter height. Default 0.57. */
@@ -169,7 +169,17 @@ function paletteFor(
       `colors is ${colors} but only ${palette.length} are available; pass a longer palette`,
     );
   }
-  return palette.slice(0, colors);
+  const used = palette.slice(0, colors);
+  // A part is told from the next by its color, so two slots the same
+  // color would come out as one part and every slot after them would
+  // move up; the lead's color on a piece of glass would lose the glass.
+  const twice = used.find((color, i) => used.indexOf(color) !== i);
+  if (twice) {
+    throw new RangeError(
+      `palette colors must all be different, and ${twice} is there twice`,
+    );
+  }
+  return used;
 }
 
 /** A glyph's outline as closed rings, in whatever units the path is in. */

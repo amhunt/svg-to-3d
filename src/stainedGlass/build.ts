@@ -92,6 +92,9 @@ const height = (
   return v;
 };
 
+/** Paint thinner than this, mm, is two edges that nearly met, not a piece. */
+const HAIRLINE = 0.1;
+
 const rgbOf = (hex: string): [number, number, number] => [
   parseInt(hex.slice(1, 3), 16),
   parseInt(hex.slice(3, 5), 16),
@@ -155,8 +158,10 @@ const closestPair = (a: Vec2[], b: Vec2[]): [Vec2, Vec2] => {
  *
  * The design only says what color goes where and where the glass is cut.
  * Every measurement comes from the layout: the frame is `frameWidth` wide,
- * neighbouring pieces end up exactly `leadWidth` apart, and the letters'
- * glass is the font's own outline, whatever was drawn. Change a width in
+ * two pieces that meet end up exactly `leadWidth` apart, and the letters'
+ * glass is cut to the font's own outline, whatever was drawn. A gap that
+ * is the font's own — the eye of an "e", the notch in an "N" — keeps the
+ * font's width and fills with lead, never with more letter. Change a width in
  * the layout and build again with the same design to resize it.
  *
  * `designSvg` can be a model's reply to `stainedGlassPrompt`, the output
@@ -196,28 +201,33 @@ export function buildStainedGlass(
     background: glass[2 % glass.length],
   };
 
-  // Where each group's paint is allowed to show, in "piece space": every
-  // boundary here is the centre-line of a lead, half a lead out from where
-  // the glass will end. Shrinking every piece by that half at the end is
-  // what makes the lead between any two of them exactly one lead wide.
-  const f = layout.frameWidth - half;
-  const area = rectRegion(f, f, W - f, H - f);
-  const glyphs = layout.letters.map((l) =>
-    overlap(grow(regionOf(l.rings, limit), half), area),
+  // Where each group's glass may be, exactly. Every zone's edge is an edge
+  // of the finished glass, with lead beyond it: the frame outside the
+  // glass area, one lead around the band, one lead around every letter.
+  const inner = rectRegion(
+    layout.frameWidth,
+    layout.frameWidth,
+    W - layout.frameWidth,
+    H - layout.frameWidth,
   );
-  const allGlyphs = glyphs.reduce(unite, [] as Region);
+  // The letters as the font drew them. Nothing here grows an outline and
+  // shrinks it back: that closes every gap narrower than the lead, which
+  // fills the eye of an "e" and the bends of an "s" with glass.
+  const ink = layout.letters.map((l) =>
+    overlap(regionOf(l.rings, limit), inner),
+  );
+  const leaded = grow(ink.reduce(unite, [] as Region), lead);
   const b = layout.band;
-  const bandPlus = b
-    ? overlap(
-        grow(rectRegion(b.x, b.y, b.x + b.width, b.y + b.height), half, true),
-        area,
-      )
+  const bandBox = b
+    ? overlap(rectRegion(b.x, b.y, b.x + b.width, b.y + b.height), inner)
     : [];
   const zones: Record<DesignRegion, Region[]> = {
-    // One zone per letter, so two letters set tight never fuse into one piece
-    letters: glyphs,
-    band: bandPlus.length ? [subtract(bandPlus, allGlyphs)] : [],
-    background: [subtract(area, bandPlus.length ? bandPlus : allGlyphs)],
+    // One zone per letter, so two letters set tight never share a piece
+    letters: ink,
+    band: bandBox.length ? [subtract(bandBox, leaded)] : [],
+    background: [
+      subtract(inner, bandBox.length ? grow(bandBox, lead, true) : leaded),
+    ],
   };
 
   let leadPaint = 0;
@@ -237,7 +247,14 @@ export function buildStainedGlass(
     return best === leadColor ? null : best;
   };
 
-  type Raw = { color: string; region: DesignRegion; poly: RegionPoly };
+  type Raw = {
+    color: string;
+    region: DesignRegion;
+    /** Which of the region's zones it's in; pieces only meet within one */
+    zone: number;
+    poly: RegionPoly;
+    box: [number, number, number, number];
+  };
   const raw: Raw[] = [];
   const cuts: Record<DesignRegion, Region> = {
     letters: [],
@@ -290,22 +307,40 @@ export function buildStainedGlass(
     }
     visible.reverse();
 
-    for (const zone of zones[region]) {
+    zones[region].forEach((zone, z) => {
       for (const paint of visible) {
         for (const poly of polygonsOf(overlap(paint.shape, zone))) {
-          raw.push({ color: paint.color, region, poly });
+          // Two edges drawn a hair apart leave a hair of paint between
+          // them. It isn't a piece and mustn't be treated as a neighbour.
+          if (grow(polyRegion(poly), -HAIRLINE / 2).length === 0) continue;
+          raw.push({
+            color: paint.color,
+            region,
+            zone: z,
+            poly,
+            box: boundsOf(poly.outline),
+          });
         }
       }
-    }
+    });
   }
 
-  // Shrink to glass, split along the cuts, and lose anything too fine to print.
+  // Glass is "opened": worn back by half the minimum feature and grown out
+  // again, which takes off slivers, necks and strips too thin to print.
+  // For the background and the band that is the whole of it, and it rounds
+  // their corners a little. A letter would lose its corners that way, so a
+  // letter keeps its own edge wherever the opened shape comes within half a
+  // feature of it: square corners stay square, and a thin strip a cut left
+  // hanging off a stroke still goes.
   type Piece = { color: string; region: DesignRegion; poly: RegionPoly };
   const pieces: Piece[] = [];
-  const open = (region: Region): RegionPoly[] =>
-    polygonsOf(grow(grow(region, -feature / 2), feature / 2))
-      .map(tidy)
-      .filter((p): p is RegionPoly => p !== null);
+  const finish = (region: Region, exact: boolean): RegionPoly[] => {
+    const opened = grow(grow(region, -feature / 2), feature / 2);
+    const polys = polygonsOf(
+      exact ? overlap(region, grow(opened, feature / 2)) : opened,
+    );
+    return polys.map(tidy).filter((p): p is RegionPoly => p !== null);
+  };
   const keep = (source: Raw, polys: RegionPoly[]) => {
     for (const poly of polys) {
       if (polyArea(poly) < minArea) {
@@ -318,11 +353,33 @@ export function buildStainedGlass(
 
   for (const piece of raw) {
     try {
-      const shrunk = subtract(
-        grow(polyRegion(piece.poly), -half),
+      // Lead goes where two pieces meet, and only there. Each gives up
+      // half a lead along the other, so the line between them is one lead
+      // wide and centred on where they met; an edge with no neighbour —
+      // the edge of the zone — stays exactly where it was drawn.
+      const [x0, y0, x1, y1] = piece.box;
+      const near: Region = [];
+      for (const other of raw) {
+        if (
+          other === piece ||
+          other.region !== piece.region ||
+          other.zone !== piece.zone ||
+          other.box[0] > x1 + half ||
+          other.box[2] < x0 - half ||
+          other.box[1] > y1 + half ||
+          other.box[3] < y0 - half
+        ) {
+          continue;
+        }
+        near.push(...polyRegion(other.poly));
+      }
+      const exact = piece.region === "letters";
+      const own = polyRegion(piece.poly);
+      const trimmed = subtract(
+        near.length ? subtract(own, grow(near, half)) : own,
         cuts[piece.region],
       );
-      let polys = open(shrunk);
+      let polys = finish(trimmed, exact);
       if (polys.length === 0) {
         if (polyArea(piece.poly) > minArea) dropped++;
         continue;
@@ -355,8 +412,9 @@ export function buildStainedGlass(
               bridged++;
             }
             next.push(
-              ...open(
+              ...finish(
                 subtract(polyRegion(poly), strokeRegion(struts, half, limit)),
+                exact,
               ),
             );
           }

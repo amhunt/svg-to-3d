@@ -147,6 +147,7 @@ export function readPathData(d: string): Subpath[] {
   };
 
   while (i < tokens.length && budget > 0) {
+    const before = i;
     if (!isNumber(tokens[i])) command = tokens[i++];
     else if (command === "") break;
     else if (command === "M") command = "L";
@@ -256,6 +257,11 @@ export function readPathData(d: string): Subpath[] {
     }
     previous = op;
     if (Number.isNaN(at.x) || Number.isNaN(at.y)) break;
+    // Numbers after a closepath ("Z 1") belong to no command: nothing
+    // above reads them, and going round again would never end. The path
+    // is in error from here, so keep what was drawn and stop, as a
+    // browser does.
+    if (i === before) break;
   }
   return out.filter((s) => s.points.length >= 2);
 }

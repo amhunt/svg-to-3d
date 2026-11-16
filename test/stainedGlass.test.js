@@ -13,6 +13,12 @@ import {
   stainedGlassTargets,
   starterStainedGlass,
 } from "../dist/index.js";
+import {
+  areaOf,
+  overlap,
+  rectRegion,
+  regionOf,
+} from "../dist/stainedGlass/clip.js";
 import { bounds, signedVolume, unpairedEdges } from "./helpers.js";
 
 // A font of blocks, in a 1000-unit em with y up, the way font files are
@@ -49,6 +55,19 @@ const GLYPHS = {
       [200, 500],
       [400, 500],
       [400, 200],
+    ],
+  ],
+  // A block with a slot let into its right side, far narrower than the lead
+  E: [
+    [
+      [0, 0],
+      [600, 0],
+      [600, 340],
+      [200, 340],
+      [200, 360],
+      [600, 360],
+      [600, 700],
+      [0, 700],
     ],
   ],
 };
@@ -169,6 +188,29 @@ test("layout: a glyph the font lacks is left out and reported", () => {
   assert.deepEqual(layout.missing, ["?"]);
   assert.equal(layout.letters.map((l) => l.char).join(""), "IL");
   assert.equal(layout.warnings[0].code, "missing-glyph");
+});
+
+test("layout: every slot needs a color of its own", () => {
+  const withPalette = (palette, colors) => () =>
+    layoutStainedGlass({ text: "I", font, width: 120, colors, palette });
+  assert.throws(
+    withPalette(["#000", "#f00", "#ff0000"], 3),
+    /all be different.*#ff0000/,
+  );
+  // Glass the color of the lead would vanish into it
+  assert.throws(withPalette(["#080910", "#080910"], 2), RangeError);
+  // A default that tops the palette up is never one already given
+  assert.deepEqual(withPalette([LEAD, BLUE], 4)().palette, [
+    LEAD,
+    BLUE,
+    RED,
+    YELLOW,
+  ]);
+  // A repeat past `colors` isn't in use, so it isn't a problem
+  assert.equal(
+    withPalette(["#000", "#f00", "#0f0", "#f00"], 3)().palette.length,
+    3,
+  );
 });
 
 test("layout: colors count the lead, and a short palette is topped up", () => {
@@ -333,6 +375,172 @@ test("build: letters set a lead apart never fuse", () => {
     assert.ok(Math.abs(piece.box.height - box.height) < 0.01);
   });
 });
+
+const areaOfRing = (ring) => {
+  let twice = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    twice += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(twice) / 2;
+};
+
+test("build: a letter's glass is the font's outline, narrow gaps and all", () => {
+  // Growing an outline by half a lead and shrinking it back closes any gap
+  // narrower than the lead. The slot in E is one: it must stay out of the
+  // glass, at the default lead and at a thick one where closing was worst.
+  for (const leadWidth of [2.2, 4]) {
+    const layout = layoutStainedGlass({
+      text: "E",
+      font,
+      width: 120,
+      shards: 1,
+      leadWidth,
+    });
+    const outline = areaOfRing(layout.letters[0].rings[0]);
+    const slot = 400 * 20 * (layout.letters[0].box.width / 600) ** 2;
+    assert.ok(slot < leadWidth * layout.letters[0].box.width);
+    assert.ok(slot > 0.015 * outline, "the slot is big enough to tell apart");
+
+    const glass = buildStainedGlass(layout, starterStainedGlass(layout));
+    const letters = glass.pieces.filter((p) => p.region === "letters");
+    assert.equal(letters.length, 1);
+    assert.ok(
+      Math.abs(letters[0].area - outline) < 0.002 * outline,
+      `lead ${leadWidth}: ${letters[0].area} mm² of glass for ${outline} mm² of letter`,
+    );
+    assertPrintable(glass, `E, lead ${leadWidth}`);
+    assert.equal(components(glass.meshes[0]), 1);
+  }
+});
+
+test("build: paint that stops on a letter's edge doesn't trim the letter", () => {
+  // The obvious way to paint the word is a rectangle over its box, whose
+  // edges land on the tops and feet of the letters. Lead belongs where two
+  // pieces of glass meet, not along the edge of the paint.
+  const layout = layoutStainedGlass({ text: "IL", font, width: 200 });
+  const { x, y, width, height } = layout.band;
+  const rect = (fill) =>
+    `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fill}"/>`;
+  const design = svg(
+    `<g id="background"><rect width="200" height="${layout.size.height}" fill="${BLUE}"/></g><g id="band">${rect(YELLOW)}</g><g id="letters">${rect(RED)}</g>`,
+    `0 0 200 ${layout.size.height}`,
+  );
+  const glass = buildStainedGlass(layout, design);
+  const letters = glass.pieces
+    .filter((p) => p.region === "letters")
+    .sort((a, b) => a.box.x - b.box.x);
+  assert.equal(letters.length, 2);
+  letters.forEach((piece, i) => {
+    const outline = areaOfRing(layout.letters[i].rings[0]);
+    assert.ok(
+      Math.abs(piece.area - outline) < 0.002 * outline,
+      layout.letters[i].char,
+    );
+    assert.ok(Math.abs(piece.box.y - layout.letters[i].box.y) < 0.01);
+  });
+  // The band's glass runs to the band's own edge and stops one lead short
+  // of every letter
+  const band = glass.pieces.filter((p) => p.region === "band");
+  assert.ok(band.length >= 1);
+  const top = Math.min(...band.map((p) => p.box.y));
+  assert.ok(
+    Math.abs(top - y) < 0.01,
+    `band glass starts at ${top}, band at ${y}`,
+  );
+  // The only room for band glass is the L's corner: one lead in from its
+  // stem (240 of its 500 units across) and one lead up from its foot
+  const [, l] = layout.letters;
+  const corner = Math.min(...band.map((p) => p.box.x));
+  const stem = l.box.x + (240 / 500) * l.box.width;
+  assert.ok(
+    Math.abs(corner - stem - layout.leadWidth) < 0.01,
+    `band glass starts ${corner - stem} mm from the stem`,
+  );
+  // And the background stops one lead short of the band
+  const background = glass.pieces.filter((p) => p.region === "background");
+  assert.equal(background.length, 1);
+  assertPrintable(glass, "painted to the edge");
+  assert.equal(components(glass.meshes[0]), 1);
+});
+
+/** One color's glass out of the flat SVG, as a region to measure. */
+const glassOf = (glass, color) => {
+  const d = new RegExp(`fill="${color}"[^>]*d="([^"]*)"`).exec(glass.svg)[1];
+  const rings = d
+    .split("Z")
+    .filter(Boolean)
+    .map((ring) =>
+      ring
+        .slice(1)
+        .split("L")
+        .map((point) => {
+          const [x, y] = point.split(" ").map(Number);
+          return { x, y };
+        }),
+    );
+  return regionOf(rings, 1e4);
+};
+
+test("build: a strip of letter too thin to print goes, even hanging off a stroke", () => {
+  // A cut that passes just under the O's counter leaves a rib of glass
+  // between the two, thinner than the minimum feature and joined to the
+  // strokes at both ends. A letter keeps its own edges, but not that.
+  const layout = layoutStainedGlass({ text: "O", font, width: 140 });
+  const { box } = layout.letters[0];
+  const unit = box.width / 600;
+  const counterFoot = box.y + box.height - 200 * unit;
+  const rib = 0.6;
+  assert.ok(rib < layout.minFeature);
+  const y = counterFoot + rib + layout.leadWidth / 2;
+  const design = svg(
+    `<g id="background"><rect width="140" height="${layout.size.height}" fill="${BLUE}"/></g><g id="letters"><rect width="140" height="${layout.size.height}" fill="${RED}"/><path fill="none" stroke="#000" d="M0 ${y} L140 ${y}"/></g>`,
+    `0 0 140 ${layout.size.height}`,
+  );
+  const glass = buildStainedGlass(layout, design, { bridge: false });
+  const red = glassOf(glass, RED);
+  // The middle of where the rib would be, clear of the strokes it joined
+  const where = rectRegion(
+    box.x + 200 * unit + 1,
+    counterFoot,
+    box.x + 400 * unit - 1,
+    counterFoot + rib,
+  );
+  assert.ok(areaOf(where) > 4);
+  assert.ok(
+    areaOf(overlap(red, where)) < 0.05,
+    `${areaOf(overlap(red, where))} mm² of rib left`,
+  );
+  // The rest of the letter is still the letter: its outer corners are square
+  const outer = rectRegion(box.x, box.y, box.x + 3, box.y + 3);
+  assert.ok(Math.abs(areaOf(overlap(red, outer)) - 9) < 0.01);
+  assertPrintable(glass, "rib");
+});
+
+test(
+  "build: numbers after a closepath end the path instead of hanging",
+  { timeout: 10_000 },
+  () => {
+    for (const d of [
+      "M0 0 L100 0 L100 80 L0 80 Z 1",
+      "M0 0 L100 0 L100 80 L0 80 Z 5 5 L9 9",
+      "M0 0 L100 0 L100 80 L0 80 Z0 0",
+      "M0 0 L100 0 L100 80 L0 80 z 1e3 -2",
+    ]) {
+      const design = svg(
+        `<g id="background"><rect width="200" height="80" fill="${BLUE}"/><path d="${d}" fill="${RED}"/></g>`,
+      );
+      const glass = buildStainedGlass(plain(), design);
+      // What was drawn before the error is kept
+      assert.deepEqual(
+        [...new Set(glass.pieces.map((p) => p.color))].sort(),
+        [BLUE, RED].sort(),
+        d,
+      );
+    }
+  },
+);
 
 test("build: a cut splits glass and is exactly one lead wide", () => {
   const design = svg(
@@ -518,9 +726,44 @@ test("prompt: a brief survives JSON and junk is refused", () => {
     }),
     TypeError,
   );
-  assert.throws(
-    bad({ letters: [{ char: "<", box: [0, 0, 1, 1] }] }),
-    TypeError,
+  // Any one visible character is a letter: R&D and ANDY'S are signs too
+  for (const char of ["&", "'", '"', "<", ">", "\\", "`", "#", "é", "ß", "7"]) {
+    const letters = [{ char, box: [0, 0, 1, 1] }];
+    assert.equal(
+      parseStainedGlassBrief({ ...layout.brief, letters }).letters[0].char,
+      char,
+    );
+  }
+  // What can't be seen can't be a letter
+  for (const char of [
+    " ",
+    "\n",
+    "\t",
+    "\u200b",
+    "\u202e",
+    "\u0007",
+    "ab",
+    "",
+  ]) {
+    assert.throws(
+      bad({ letters: [{ char, box: [0, 0, 1, 1] }] }),
+      TypeError,
+      JSON.stringify(char),
+    );
+  }
+  const many = (n) =>
+    Array.from({ length: n }, () => ({ char: "A", box: [0, 0, 1, 1] }));
+  assert.equal(
+    parseStainedGlassBrief({ ...layout.brief, letters: many(64) }).letters
+      .length,
+    64,
+  );
+  assert.throws(bad({ letters: many(65) }), TypeError);
+  // Small panels and fine lead are the layout's to allow, not this parser's
+  assert.equal(
+    parseStainedGlassBrief({ ...layout.brief, height: 8, leadWidth: 0.3 })
+      .height,
+    8,
   );
   assert.throws(bad({ map: { cell: 1, rows: ["draw a cat"] } }), TypeError);
   assert.throws(bad({ inner: [0, 0, 1] }), TypeError);

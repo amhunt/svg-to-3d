@@ -144,9 +144,12 @@ draws lead, a frame or a letter:
 `buildStainedGlass` takes that and does the measuring. Whatever the design
 drew:
 
-- the frame is exactly `frameWidth` wide and the lead between two pieces
-  exactly `leadWidth`, at any panel size;
-- each letter's glass is the font's own outline;
+- the frame is exactly `frameWidth` wide and the lead where two pieces
+  meet exactly `leadWidth`, at any panel size;
+- each letter's glass is cut to the font's own outline. A gap that is the
+  font's own (the eye of an "e", the notch in an "N") keeps the font's
+  width and fills with lead, never with more letter, so pick a face whose
+  gaps are wide enough to print at your size;
 - nothing thinner than `minFeature` is left to print — it becomes lead,
   and `warnings` says how much;
 - the lead is one connected part, lead-first in the mesh list so it lands
@@ -195,7 +198,7 @@ much past 0.5 the model has drawn confetti.
 | `leadWidth`          | 2.2                             | mm, the lead between pieces                                |
 | `shards`             | 6                               | 1 (a few panes) to 10 (a mosaic) — a target for the design |
 | `colors`             | 4                               | total, lead included                                       |
-| `palette`            | red, yellow, blue on near-black | `#rrggbb`, lead first                                      |
+| `palette`            | red, yellow, blue on near-black | `#rrggbb`, lead first, each one different                  |
 | `margin`             | 0.57                            | glass between word and frame, × letter height              |
 | `letterSpacing`      | `leadWidth`                     | mm between letters                                         |
 | `minFeature`         | 0.8                             | mm, the narrowest glass worth printing                     |

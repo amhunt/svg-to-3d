@@ -131,6 +131,8 @@ export function stainedGlassPrompt(
 }
 
 const HEX = /^#[0-9a-f]{6}$/;
+/** More letters than this and it's a paragraph, not a sign */
+const MAX_LETTERS = 64;
 
 const num = (
   value: unknown,
@@ -161,6 +163,8 @@ const box = (value: unknown, name: string): BriefBox => {
 /**
  * Rebuild a brief from untrusted JSON, keeping only what the prompt uses.
  * Throws a `TypeError` naming the first field that isn't what it should be.
+ * Anything `layoutStainedGlass` lays out passes, up to 64 letters on a
+ * panel up to five metres across.
  * Run a request body through this before `stainedGlassPrompt`: afterwards
  * the brief holds numbers, hex colors and single printable characters, and
  * nothing else.
@@ -170,13 +174,19 @@ export function parseStainedGlassBrief(value: unknown): StainedGlassBrief {
     throw new TypeError("brief must be an object");
   const v = value as Record<string, unknown>;
 
-  if (!Array.isArray(v.letters) || v.letters.length > 40) {
-    throw new TypeError("brief.letters must be a list of at most 40 letters");
+  if (!Array.isArray(v.letters) || v.letters.length > MAX_LETTERS) {
+    throw new TypeError(
+      `brief.letters must be a list of at most ${MAX_LETTERS} letters`,
+    );
   }
   const letters = v.letters.map((raw, i) => {
     const letter = (raw ?? {}) as Record<string, unknown>;
     const chars = Array.from(String(letter.char ?? ""));
-    if (chars.length !== 1 || /[\s<>&"'`\\\p{C}]/u.test(chars[0])) {
+    // Any one visible character: a sign may say R&D or ANDY'S, and a lone
+    // character can't carry an instruction whatever it is. What's refused
+    // is what can't be seen — whitespace, control characters, and the
+    // zero-width and direction-switching ones that hide in \p{C}.
+    if (chars.length !== 1 || /[\s\p{C}]/u.test(chars[0])) {
       throw new TypeError(
         `brief.letters[${i}].char must be one printable character`,
       );
@@ -215,11 +225,11 @@ export function parseStainedGlassBrief(value: unknown): StainedGlassBrief {
   }
 
   return {
-    width: num(v.width, "width", 10, 2000),
-    height: num(v.height, "height", 10, 2000),
-    frameWidth: num(v.frameWidth, "frameWidth", 0.4, 100),
-    leadWidth: num(v.leadWidth, "leadWidth", 0.4, 50),
-    minFeature: num(v.minFeature, "minFeature", 0.1, 20),
+    width: num(v.width, "width", 1, 5000),
+    height: num(v.height, "height", 1, 5000),
+    frameWidth: num(v.frameWidth, "frameWidth", 0.01, 500),
+    leadWidth: num(v.leadWidth, "leadWidth", 0.01, 500),
+    minFeature: num(v.minFeature, "minFeature", 0.01, 500),
     inner: box(v.inner, "inner"),
     band: v.band ? box(v.band, "band") : null,
     letters,
