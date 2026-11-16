@@ -537,7 +537,7 @@ export function exposedEdges(
   minTop: number,
 ): boolean[] {
   const n = ring.length;
-  const out: boolean[] = new Array(n);
+  const out = new Array<boolean>(n);
   for (let i = 0; i < n; i++) {
     const a = ring[i];
     const b = ring[(i + 1) % n];

@@ -78,7 +78,7 @@ const byte = (n: number) =>
     .padStart(2, "0");
 
 /** A CSS color → `#rrggbb`; `"none"` for no paint; null when unreadable. */
-export function readColor(raw: string | undefined): string | "none" | null {
+export function readColor(raw: string | undefined): string | null {
   if (raw === undefined) return null;
   const s = raw.trim().toLowerCase();
   if (s === "") return null;

@@ -1,0 +1,4 @@
+dist/
+package-lock.json
+# Somebody's artwork, kept byte for byte
+test/fixtures/
