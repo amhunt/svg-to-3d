@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch/PR
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Nothing here writes back to the repo; keep the job token read-only so a
+# compromised dev dependency running under `npm ci` gets nothing more.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: ESLint, Prettier, tsc
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      # The tests run against dist, so a type error in a file no test
+      # imports would otherwise only show up at publish
+      - run: npm run typecheck
+
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # What the dev dependencies still run on, up to current
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # Builds first, then runs the suite twice: once with a DOM registered
+      # for the SVG path, once without for the stained-glass path
+      - run: npm test
+
+  package:
+    name: Pack and import
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm pack
+      # Install the tarball the way a stranger would and import every entry
+      # in the exports map. The tests import from dist by path, so a wrong
+      # `exports` or `files` would sail through them and break on npm.
+      - name: Import each entry from the packed tarball
+        run: |
+          tarball="$PWD/$(ls svg-to-3d-*.tgz)"
+          mkdir "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer"
+          npm init -y > /dev/null
+          npm install "$tarball" three
+          node --input-type=module -e '
+            const root = await import("svg-to-3d");
+            const glass = await import("svg-to-3d/stained-glass");
+            const prompt = await import("svg-to-3d/stained-glass/prompt");
+            for (const [entry, name] of [
+              [root, "processAnalysis"],
+              [root, "buildStainedGlass"],
+              [glass, "layoutStainedGlass"],
+              [glass, "exportToThreeMf"],
+              [prompt, "stainedGlassPrompt"],
+            ]) {
+              if (typeof entry[name] !== "function") {
+                throw new Error(`${name} is missing from the package`);
+              }
+            }
+            console.log("every entry imports");
+          '
