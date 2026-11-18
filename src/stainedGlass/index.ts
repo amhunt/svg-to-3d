@@ -16,7 +16,8 @@ export type {
   StainedGlassPiece,
 } from "./build.js";
 
-export { starterStainedGlass } from "./starter.js";
+export { starterStainedGlass, STARTER_STYLES } from "./starter.js";
+export type { StarterStyle } from "./starter.js";
 
 export {
   stainedGlassPrompt,

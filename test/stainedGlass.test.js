@@ -12,6 +12,7 @@ import {
   stainedGlassPrompt,
   stainedGlassTargets,
   starterStainedGlass,
+  STARTER_STYLES,
 } from "../dist/index.js";
 import {
   areaOf,
@@ -475,7 +476,8 @@ test("build: paint that stops on a letter's edge doesn't trim the letter", () =>
     `<g id="background"><rect width="200" height="${layout.size.height}" fill="${BLUE}"/></g><g id="band">${rect(YELLOW)}</g><g id="letters">${rect(RED)}</g>`,
     `0 0 200 ${layout.size.height}`,
   );
-  const glass = buildStainedGlass(layout, design);
+  // Whole letters, so their areas can be checked against the outlines
+  const glass = buildStainedGlass(layout, design, { joins: false });
   const letters = glass.pieces
     .filter((p) => p.region === "letters")
     .sort((a, b) => a.box.x - b.box.x);
@@ -806,7 +808,10 @@ test("prompt: the brief becomes a message, and only the notes are free text", ()
   assert.match(user, new RegExp(`Palette: ${RED} ${YELLOW} ${BLUE}`));
   assert.match(user, /Theme: a sun scriptrising\/script behind the letters$/);
   assert.match(user, /#/);
-  assert.match(stainedGlassPrompt(layout.brief).user, /Theme: abstract shards/);
+  assert.match(
+    stainedGlassPrompt(layout.brief).user,
+    /Theme: none: pick a composition/,
+  );
   // The example in the system prompt is itself a design that builds
   const example = system.slice(system.lastIndexOf("<svg xmlns"));
   assert.match(example, /<\/svg>$/);
@@ -996,4 +1001,82 @@ test("no DOM: the whole stained-glass path runs without a DOMParser", () => {
   } finally {
     globalThis.DOMParser = had;
   }
+});
+
+test("build: letters are leaded at their joins and through their counters", () => {
+  const layout = layoutStainedGlass({ text: "LEO", font, width: 250 });
+  const count = (options) => {
+    const glass = buildStainedGlass(
+      layout,
+      starterStainedGlass(layout),
+      options,
+    );
+    assertPrintable(glass, JSON.stringify(options));
+    const byLetter = layout.letters.map(() => 0);
+    for (const piece of glass.pieces) {
+      if (piece.region !== "letters") continue;
+      const i = layout.letters.findIndex(
+        (l) =>
+          piece.box.x >= l.box.x - 0.01 && piece.box.x <= l.box.x + l.box.width,
+      );
+      byLetter[i]++;
+    }
+    return byLetter;
+  };
+  // L: stem and foot. This E is a block with a slot: cut once from the
+  // slot's end. The square O: cut from each corner of its counter, so no
+  // ring of glass is left.
+  assert.deepEqual(count({}), [2, 2, 4]);
+  assert.deepEqual(count({ joins: false }), [1, 1, 1]);
+  const sparse = layoutStainedGlass({
+    text: "LEO",
+    font,
+    width: 250,
+    shards: 2,
+  });
+  const glass = buildStainedGlass(sparse, starterStainedGlass(sparse));
+  assert.equal(glass.pieces.filter((p) => p.region === "letters").length, 3);
+});
+
+test("starter: every style draws a printable panel, word or no word", () => {
+  for (const style of STARTER_STYLES) {
+    for (const text of ["", "ILO"]) {
+      for (const shards of [1, 5, 10]) {
+        const layout = layoutStainedGlass({
+          text,
+          font,
+          width: 220,
+          height: 90,
+          shards,
+        });
+        const design = starterStainedGlass(layout, { style, seed: 3 });
+        assert.equal(design, starterStainedGlass(layout, { style, seed: 3 }));
+        const label = `${style}, "${text}", shards ${shards}`;
+        const glass = buildStainedGlass(layout, design);
+        assertPrintable(glass, label);
+        assert.ok(
+          !glass.warnings.some((w) => w.code === "unused-color"),
+          label,
+        );
+        const background = glass.pieces.filter(
+          (p) => p.region === "background",
+        );
+        assert.ok(background.length >= 4, label);
+      }
+    }
+  }
+  const layout = layoutStainedGlass({ text: "ILO", font, width: 220 });
+  assert.throws(
+    () => starterStainedGlass(layout, { style: "plaid" }),
+    RangeError,
+  );
+  // Without a style, stepping the seed steps through the styles
+  assert.equal(
+    starterStainedGlass(layout, { seed: 1 }),
+    starterStainedGlass(layout, { seed: 1, style: STARTER_STYLES[0] }),
+  );
+  assert.equal(
+    starterStainedGlass(layout, { seed: 2 }),
+    starterStainedGlass(layout, { seed: 2, style: STARTER_STYLES[1] }),
+  );
 });
