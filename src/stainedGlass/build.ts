@@ -27,6 +27,7 @@ import {
   type RegionPoly,
 } from "./clip.js";
 import { parseDesign, type DesignRegion } from "./design.js";
+import { letterJoins } from "./joins.js";
 import type { Box, StainedGlassLayout, StainedGlassWarning } from "./layout.js";
 
 export type StainedGlassOptions = {
@@ -43,6 +44,12 @@ export type StainedGlassOptions = {
    * as a glazier has to, so the lead stays one connected part. Default true.
    */
   bridge?: boolean;
+  /**
+   * Lead each letter where its strokes join, the way a glazier cuts one:
+   * across the stroke from every sharp inside corner, and through every
+   * counter. Applies from `shards` 3 up. Default true.
+   */
+  joins?: boolean;
 };
 
 export type StainedGlassPiece = {
@@ -294,6 +301,13 @@ export function buildStainedGlass(
         continue;
       }
       paints.push({ color, shape: painted });
+    }
+    // Letters come leaded at their joins, as a glazier would cut them,
+    // whatever the design says; a design can add cuts but not take these away.
+    if (region === "letters" && options.joins !== false && layout.shards >= 3) {
+      for (const letter of layout.letters) {
+        lines.push(...letterJoins(letter.rings, lead));
+      }
     }
     cuts[region] = strokeRegion(lines, half, limit);
 

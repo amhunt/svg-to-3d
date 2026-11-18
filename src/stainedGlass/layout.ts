@@ -1,5 +1,6 @@
 import type { Vec2 } from "../solids.js";
 import { cubicPoints, quadPoints } from "./flatten.js";
+import { insideRings } from "./joins.js";
 import {
   stainedGlassTargets,
   type BriefBox,
@@ -249,21 +250,6 @@ const boundsOfRings = (rings: Vec2[][]): [number, number, number, number] => {
     }
   }
   return [x0, y0, x1, y1];
-};
-
-/** Nonzero winding test, the rule font outlines are filled by. */
-const insideRings = (x: number, y: number, rings: Vec2[][]): boolean => {
-  let winding = 0;
-  for (const ring of rings) {
-    for (let i = 0, n = ring.length; i < n; i++) {
-      const a = ring[i];
-      const b = ring[(i + 1) % n];
-      if (a.y <= y === b.y <= y) continue;
-      const cross = (b.x - a.x) * (y - a.y) - (x - a.x) * (b.y - a.y);
-      if (b.y > a.y ? cross > 0 : cross < 0) winding += b.y > a.y ? 1 : -1;
-    }
-  }
-  return winding !== 0;
 };
 
 const ringArea = (ring: Vec2[]): number => {
