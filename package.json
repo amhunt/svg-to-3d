@@ -1,6 +1,6 @@
 {
   "name": "svg-to-3d",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Turn an SVG into watertight, multi-color 3D-printable solids, or a word into a stained-glass sign. Manifold-correct 3MF out, no repair round-trip.",
   "keywords": [
     "svg",

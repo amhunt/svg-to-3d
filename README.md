@@ -98,7 +98,8 @@ const layout = layoutStainedGlass({ text: "HUNT", font, width: 250 });
 layout.size; // { width: 250, height: 123.8 }
 
 // 2. A design: which color goes where, and where the glass is cut.
-const design = starterStainedGlass(layout, { seed: 7 });
+// "border", "shards" or "halo"; leave the style out and the seed picks one.
+const design = starterStainedGlass(layout, { style: "border", seed: 7 });
 
 // 3. Glass, lead and meshes.
 const glass = buildStainedGlass(layout, design);
@@ -148,6 +149,10 @@ drew:
 
 - the frame is exactly `frameWidth` wide and the lead where two pieces
   meet exactly `leadWidth`, at any panel size;
+- each letter is leaded the way a glazier cuts one: across the stroke from
+  every sharp inside corner, and through every counter, so an H comes apart
+  into two stems and a bar and no ring of glass is left round an O (from
+  `shards` 3 up; `joins: false` turns it off);
 - each letter's glass is cut to the font's own outline. A gap that is the
   font's own (the eye of an "e", the notch in an "N") keeps the font's
   width and fills with lead, never with more letter, so pick a face whose

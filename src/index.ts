@@ -20,6 +20,7 @@ export {
   layoutStainedGlass,
   buildStainedGlass,
   starterStainedGlass,
+  STARTER_STYLES,
   stainedGlassPrompt,
   stainedGlassTargets,
   parseStainedGlassBrief,
@@ -41,4 +42,5 @@ export type {
   StainedGlassPiece,
   StainedGlassTargets,
   StainedGlassWarning,
+  StarterStyle,
 } from "./stainedGlass/index.js";

@@ -56,26 +56,40 @@ export function stainedGlassTargets(shards: number): StainedGlassTargets {
   };
 }
 
-const SYSTEM = `You design stained-glass panels as SVG. A program turns your drawing into glass and lead: it puts lead of the correct width along every edge where two shapes meet and along every cut line, and it adds the frame and the exact letter outlines. Never draw lead, outlines or letterforms.
+const SYSTEM = `You design leaded stained-glass panels as SVG. A program turns your drawing into glass and lead: it puts lead of the correct width along every edge where two shapes meet and along every cut line, and it adds the frame and the exact letter outlines. Never draw lead, outlines or letterforms.
 
 Reply with one <svg> element only. No markdown, comments, <style>, <defs>, <text>, transform, gradients or opacity.
 
 Format
 - <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 W H">, in millimetres, at most one decimal.
 - Three groups in this order: <g id="background">, <g id="band">, <g id="letters">.
-- Paint: path, polygon, rect, circle or ellipse with fill set to a palette hex. Path commands M L C Q A Z, absolute. Later shapes cover earlier ones, so overlap generously instead of matching edges.
-- Cut: <path fill="none" stroke="#000" d="..."/>, a line where glass is split. It splits only its own group. Run cuts past the edge of the area they cross.
+- Paint: path, polygon, rect, circle or ellipse with fill set to a palette hex. Path commands M L C Q A Z, absolute. Later shapes cover earlier ones, so overlap generously instead of matching edges. Two touching shapes are two pieces of glass, even in the same color.
+- Cut: <path fill="none" stroke="#000" d="..."/>, a line where glass is split. It splits only its own group.
 - Every attribute value in double quotes.
 
 Groups
-- background: first a rect covering the viewBox. Then a few large color areas, one simple motif if the theme asks for it, and long gently curved cuts from edge to edge that cross each other. The band hides what is under it, so lines should seem to pass behind it.
-- band: the rectangle around the word, seen between and inside the letters. One flat color that contrasts with the letters; cut it only if the panel is meant to be busy.
-- letters: shows only inside the letter shapes. Cover every letter box with paint, then cut each letter into a few segments where its strokes join. Letter pieces are smaller than background pieces.
+- background: first a rect covering the viewBox in the ground color, then the composition. The band hides what is under it, so lines may run behind it.
+- band: one rect over the band box in one flat color that contrasts with the letters. No cuts.
+- letters: one rect over the band box in the letter color. The program already leads each letter where its strokes join; add no cuts unless the theme asks for it.
 
-Color: palette colors only, every color used at least once, strongest contrast between the letters and the band.
+How glass is designed (follow all of these)
+- Build the background from the word outwards. Carry the band's edges or corners on to the frame, so the word sits in the structure instead of floating on it, then divide each area.
+- Every lead line ends on another lead line, the band, or the frame. A cut never stops in the middle of glass: run it a little past the line it ends on, and no further.
+- Lines meet in T-junctions. Avoid crossings, and never let more than three lines meet at a point.
+- Pieces are compact and roughly convex: no slivers, no long thin tapers, nothing longer than three times its width, no hourglass shapes, no deep inside curves. Where lines meet at a sharp angle, add a line from the point.
+- Pieces in one area are similar in size, and sizes change gradually.
+- Keep lines simple: straight lines or one gentle curve each, no wiggles.
+- Color: one ground color covers most of the background. Pick out about one piece in five in the other colors, spaced out, never two accent pieces side by side, and repeat them with a rhythm (both corners, both ends) rather than at random. Every palette color appears somewhere.
+- Strongest contrast between the letters and the band; the background frames them and doesn't compete.
 
-Example for a 100 x 40 panel:
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 40"><g id="background"><rect width="100" height="40" fill="#3c8dea"/><path d="M0 40 L0 22 C30 12 60 30 100 16 L100 40 Z" fill="#fdbc00"/><path fill="none" stroke="#000" d="M-5 8 C30 20 70 -4 105 14"/><path fill="none" stroke="#000" d="M30 -5 C36 15 24 28 34 45"/></g><g id="band"><rect x="18" y="11" width="64" height="18" fill="#fdbc00"/></g><g id="letters"><rect x="18" y="11" width="64" height="18" fill="#cd000e"/><path fill="none" stroke="#000" d="M15 21 L85 19"/></g></svg>`;
+Compositions that work (choose one unless the theme says otherwise)
+- Shards: the band's two ends carried to the top and bottom of the frame, a few long gentle curves across the background, and the large pieces between them divided by short cuts that end on those curves.
+- Border: a strip of glass inside the frame, cut into equal lengths, a square jewel in each corner; the field between it and the band mitred from the band's corners to the strip's corners and divided symmetrically.
+- Halo: one to three rings round the band (rounded rectangles), each cut by short rays square to the band, every other ring's rays shifted half a step; rays alternate a light color with the ground.
+- A theme motif (a sun, a wave, leaves) goes behind the word in one or two large simple shapes, divided like everything else.
+
+Example for a 100 x 40 panel, band x 18-82 y 11-29 (shards):
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 40"><g id="background"><rect width="100" height="40" fill="#3c8dea"/><path d="M82 40 L82 24 C90 27 96 28 105 25 L105 45 Z" fill="#fdbc00"/><path d="M-5 -5 L18.5 -5 L18.5 1 L-5 14 Z" fill="#cd000e"/><path fill="none" stroke="#000" d="M18 -5 L18 45"/><path fill="none" stroke="#000" d="M82 -5 L82 45"/><path fill="none" stroke="#000" d="M-5 22 C4 20 10 24 18.5 21"/><path fill="none" stroke="#000" d="M40 -1 C42 4 44 8 44 11.5"/><path fill="none" stroke="#000" d="M60 -1 C58 4 57 8 58 11.5"/><path fill="none" stroke="#000" d="M50 28.5 C50 34 48 37 47 41"/><path fill="none" stroke="#000" d="M81.5 10 C90 11 96 14 105 12"/></g><g id="band"><rect x="18" y="11" width="64" height="18" fill="#fdbc00"/></g><g id="letters"><rect x="18" y="11" width="64" height="18" fill="#cd000e"/></g></svg>`;
 
 const n1 = (n: number) => String(Math.round(n * 10) / 10);
 const span = (a: number, b: number) => `${n1(a)}-${n1(b)}`;
@@ -122,10 +136,13 @@ export function stainedGlassPrompt(
     );
   }
   lines.push(
-    `Lead is ${n1(brief.leadWidth)} mm wide and glass narrower than ${n1(brief.minFeature + brief.leadWidth)} mm is lost, so keep cuts and edges at least ${n1(3 * brief.leadWidth)} mm apart and avoid angles under 25 degrees.`,
+    `Lead is ${n1(brief.leadWidth)} mm wide and glass narrower than ${n1(brief.minFeature + brief.leadWidth)} mm is lost, so keep lines at least ${n1(3 * brief.leadWidth)} mm apart and meet edges at no less than 35 degrees.`,
     `Palette: ${brief.glass.join(" ")}`,
-    `Targets: about ${brief.targets.background} background pieces (about ${brief.targets.cuts} cuts)${brief.band ? `, ${brief.targets.perLetter} ${brief.targets.perLetter === 1 ? "piece" : "pieces"} per letter` : ""}.`,
-    `Theme: ${tidyNotes(options.notes) || "abstract shards, no motif"}`,
+    brief.band
+      ? `Colors: letters ${brief.glass[0]}, band ${brief.glass[1 % brief.glass.length]}, ground ${brief.glass[2 % brief.glass.length]}${brief.glass.length > 3 ? `, accents ${brief.glass.slice(3).join(" ")}` : ""}.`
+      : `Colors: ground ${brief.glass[2 % brief.glass.length]}, the rest as accents.`,
+    `Targets: about ${brief.targets.background} background pieces.`,
+    `Theme: ${tidyNotes(options.notes) || "none: pick a composition, no motif"}`,
   );
   return { system: SYSTEM, user: lines.join("\n") };
 }
